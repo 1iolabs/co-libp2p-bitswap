@@ -767,7 +767,11 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
                     _ => continue,
                 };
                 match event {
-                    RequestResponseEvent::Message { peer, message } => match message {
+                    RequestResponseEvent::Message {
+                        peer,
+                        connection_id: _,
+                        message,
+                    } => match message {
                         RequestResponseMessage::Request {
                             request_id: _,
                             request,
@@ -781,6 +785,7 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
                     RequestResponseEvent::ResponseSent { .. } => {}
                     RequestResponseEvent::OutboundFailure {
                         peer,
+                        connection_id: _,
                         request_id,
                         error,
                     } => {
@@ -818,6 +823,7 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
                     }
                     RequestResponseEvent::InboundFailure {
                         peer,
+                        connection_id: _,
                         request_id,
                         error,
                     } => {
