@@ -22,6 +22,7 @@ use futures::{
     task::{Context, Poll},
 };
 use libipld::{error::BlockNotFound, store::StoreParams, Block, Cid, Result};
+use libp2p::core::transport::PortUse;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
 
@@ -167,11 +168,13 @@ impl<P: StoreParams> Bitswap<P> {
 
     /// Adds an address for a peer.
     pub fn add_address(&mut self, peer_id: &PeerId, addr: Multiaddr) {
+        #[allow(deprecated)]
         self.inner.add_address(peer_id, addr);
     }
 
     /// Removes an address for a peer.
     pub fn remove_address(&mut self, peer_id: &PeerId, addr: &Multiaddr) {
+        #[allow(deprecated)]
         self.inner.remove_address(peer_id, addr);
     }
 
@@ -469,6 +472,7 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
+        port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         #[cfg(not(feature = "compat"))]
         return self.inner.handle_established_outbound_connection(
@@ -476,11 +480,18 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
             peer,
             addr,
             role_override,
+            port_use,
         );
         #[cfg(feature = "compat")]
         return self
             .inner
-            .handle_established_outbound_connection(connection_id, peer, addr, role_override)
+            .handle_established_outbound_connection(
+                connection_id,
+                peer,
+                addr,
+                role_override,
+                port_use,
+            )
             .map(|handle| ConnectionHandler::select(handle, OneShotHandler::default()));
     }
 
@@ -509,6 +520,7 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
                 connection_id,
                 endpoint,
                 remaining_established,
+                cause,
             }) => {
                 #[cfg(feature = "compat")]
                 if remaining_established == 0 {
@@ -520,6 +532,7 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
                         connection_id,
                         endpoint,
                         remaining_established,
+                        cause,
                     }));
             }
             FromSwarm::DialFailure(DialFailure {
@@ -540,6 +553,7 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
                 send_back_addr,
                 error,
                 connection_id,
+                peer_id,
             }) => {
                 self.inner
                     .on_swarm_event(FromSwarm::ListenFailure(ListenFailure {
@@ -547,6 +561,7 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
                         send_back_addr,
                         error,
                         connection_id,
+                        peer_id,
                     }));
             }
             FromSwarm::NewListener(ev) => self.inner.on_swarm_event(FromSwarm::NewListener(ev)),
