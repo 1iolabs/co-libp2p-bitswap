@@ -839,7 +839,6 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_std::task;
     use futures::prelude::*;
     use libipld::block::Block;
     use libipld::cbor::DagCborCodec;
@@ -851,6 +850,8 @@ mod tests {
     use libp2p::{noise, tcp, yamux, SwarmBuilder};
     use libp2p::{PeerId, Swarm};
     use std::sync::{Arc, Mutex};
+    use tokio::spawn;
+    use tokio::time::sleep;
     use tracing_subscriber::fmt::TestWriter;
 
     fn tracing_try_init() {
@@ -940,7 +941,7 @@ mod tests {
     impl SlowStore {
         async fn slow(&self) {
             if let Some(duration) = self.1 {
-                async_std::task::sleep(duration).await;
+                sleep(duration).await;
             }
         }
     }
@@ -999,7 +1000,7 @@ mod tests {
         fn new_opts(slow: Option<Duration>) -> Self {
             let store = Store::default();
             let mut swarm = SwarmBuilder::with_new_identity()
-                .with_async_std()
+                .with_tokio()
                 .with_tcp(
                     tcp::Config::default(),
                     noise::Config::new,
@@ -1011,7 +1012,7 @@ mod tests {
                         BitswapConfig::new(),
                         SlowStore(store.clone(), slow),
                         Box::new(|t| {
-                            async_std::task::spawn(t);
+                            spawn(t);
                         }),
                     )
                 })
@@ -1047,7 +1048,7 @@ mod tests {
 
         fn spawn(mut self, name: &'static str) -> PeerId {
             let peer_id = self.peer_id;
-            task::spawn(async move {
+            spawn(async move {
                 loop {
                     let event = self.swarm.next().await;
                     tracing::debug!("{}: {:?}", name, event);
@@ -1091,7 +1092,7 @@ mod tests {
         }
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_get() {
         tracing_try_init();
         let mut peer1 = Peer::new();
@@ -1113,7 +1114,7 @@ mod tests {
         assert_complete_ok(peer2.next().await, id);
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_cancel_get() {
         tracing_try_init();
         let mut peer1 = Peer::new();
@@ -1137,7 +1138,7 @@ mod tests {
         assert!(res.is_none());
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_get_token() {
         tracing_try_init();
         let mut peer1 = Peer::new();
@@ -1174,7 +1175,7 @@ mod tests {
         assert_complete_err(peer2.next().await, id);
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_slow_insert() {
         tracing_try_init();
         let mut peer1 = Peer::new();
@@ -1205,7 +1206,7 @@ mod tests {
         );
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_sync() {
         tracing_try_init();
         let mut peer1 = Peer::new();
@@ -1241,7 +1242,7 @@ mod tests {
         assert_complete_ok(peer2.next().await, id);
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_bitswap_cancel_sync() {
         tracing_try_init();
         let mut peer1 = Peer::new();
@@ -1267,7 +1268,7 @@ mod tests {
     }
 
     #[cfg(feature = "compat")]
-    #[async_std::test]
+    #[tokio::test]
     async fn compat_test() {
         tracing_try_init();
         let cid: Cid = "QmP8njGuyiw9cjkhwHD9nZhyBTHufXFanAvZgcy9xYoWiB"
