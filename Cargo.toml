@@ -2,13 +2,15 @@
 name = "libp2p-bitswap"
 version = "0.25.0"
 authors = ["David Craven <david@craven.ch>"]
-edition = "2018"
+edition = "2021"
+resolver = "2"
 description = "Implementation of the ipfs bitswap protocol."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ipfs-rust/libp2p-bitswap"
 
 [features]
 compat = ["quick-protobuf", "asynchronous-codec"]
+wasm-bindgen = ["libp2p/wasm-bindgen"]
 
 [dependencies]
 async-trait = "0.1.52"
