@@ -1,11 +1,10 @@
 use crate::{
-    stats::{REQUESTS_TOTAL, REQUEST_DURATION_SECONDS},
+    stats::{Timer, REQUESTS_TOTAL, REQUEST_DURATION_SECONDS},
     Token,
 };
 use fnv::{FnvHashMap, FnvHashSet};
 use libipld::Cid;
 use libp2p::PeerId;
-use prometheus::HistogramTimer;
 use std::{collections::VecDeque, mem::take};
 
 /// Query id.
@@ -82,7 +81,7 @@ pub struct Header {
     /// Cid.
     pub cid: Cid,
     /// Timer.
-    pub _timer: HistogramTimer,
+    pub _timer: Timer,
     /// Type.
     pub label: &'static str,
     /// Tokens.

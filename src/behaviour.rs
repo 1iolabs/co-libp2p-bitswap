@@ -44,6 +44,7 @@ use libp2p::{
     },
     swarm::{ConnectionHandler, NetworkBehaviour, ToSwarm},
 };
+#[cfg(feature = "metrics")]
 use prometheus::Registry;
 use std::{pin::Pin, time::Duration};
 
@@ -215,6 +216,7 @@ impl<P: StoreParams> Bitswap<P> {
     }
 
     /// Registers prometheus metrics.
+    #[cfg(feature = "metrics")]
     pub fn register_metrics(&self, registry: &Registry) -> Result<()> {
         registry.register(Box::new(REQUESTS_TOTAL.clone()))?;
         registry.register(Box::new(REQUEST_DURATION_SECONDS.clone()))?;
