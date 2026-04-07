@@ -410,6 +410,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "co-libp2p-bitswap"
+version = "0.26.0"
+dependencies = [
+ "async-trait",
+ "asynchronous-codec",
+ "env_logger 0.9.3",
+ "fnv",
+ "futures",
+ "lazy_static",
+ "libipld",
+ "libp2p",
+ "multihash 0.18.1",
+ "pb-rs",
+ "prometheus",
+ "quick-protobuf",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "unsigned-varint 0.7.2",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1535,29 +1558,6 @@ dependencies = [
  "libp2p-core",
  "libp2p-identity",
  "libp2p-swarm",
-]
-
-[[package]]
-name = "libp2p-bitswap"
-version = "0.25.0"
-dependencies = [
- "async-trait",
- "asynchronous-codec",
- "env_logger 0.9.3",
- "fnv",
- "futures",
- "lazy_static",
- "libipld",
- "libp2p",
- "multihash 0.18.1",
- "pb-rs",
- "prometheus",
- "quick-protobuf",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "unsigned-varint 0.7.2",
 ]
 
 [[package]]

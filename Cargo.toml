@@ -1,12 +1,13 @@
 [package]
-name = "libp2p-bitswap"
-version = "0.25.0"
-authors = ["David Craven <david@craven.ch>"]
+name = "co-libp2p-bitswap"
+version = "0.26.0"
+authors = ["David Craven <david@craven.ch>", "DK <34+dk@users.noreply.1io.com>"]
 edition = "2021"
 resolver = "2"
-description = "Implementation of the ipfs bitswap protocol."
+description = "COKIT fork of libp2p-bitswap — Bitswap protocol with authentication, WASM support, and libp2p 0.56."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/ipfs-rust/libp2p-bitswap"
+homepage = "https://www.cokit.org"
+repository = "https://github.com/1iolabs/co-libp2p-bitswap"
 
 [features]
 default = ["metrics"]

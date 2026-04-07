@@ -1,7 +1,8 @@
-[![Crates.io](https://img.shields.io/crates/v/libp2p-bitswap.svg)](https://crates.io/crates/libp2p-bitswap)
-[![docs.rs](https://img.shields.io/badge/api-rustdoc-blue.svg)](https://docs.rs/libp2p-bitswap)
+> **Fork Notice:** This is a fork of [`libp2p-bitswap`](https://github.com/ipfs-rust/libp2p-bitswap)
+> published as [`co-libp2p-bitswap`](https://crates.io/crates/co-libp2p-bitswap) on crates.io for use in [COKIT](https://www.cokit.org).
+> See [Divergence](#divergence) below for details on changes from upstream.
 
-# libp2p-bitswap
+# co-libp2p-bitswap
 
 Implementation of the bitswap protocol.
 
@@ -92,6 +93,17 @@ being found or a `BlockNotFound` error.
 Often we want to sync an entire dag of blocks. We can efficiently sync dags of blocks by adding
 a sync query that runs get queries in parallel for all the references of a block. The set of
 providers that had a block is used as the initial set in a reference query.
+
+## Divergence
+
+This fork contains the following changes from upstream [`libp2p-bitswap`](https://github.com/ipfs-rust/libp2p-bitswap) v0.25.0:
+
+- Updated libp2p through versions 0.51 to 0.56
+- Migrated to quick-protobuf
+- feat: authentication support (pass remote PeerId to get/contains calls)
+- feat: `wasm-bindgen` feature for browser WASM support
+- feat: `metrics` feature with prometheus instrumentation
+- fix: limit token sending to 1MB cumulative size
 
 ## License
 
