@@ -2,8 +2,8 @@ use crate::{
     stats::{Timer, REQUESTS_TOTAL, REQUEST_DURATION_SECONDS},
     Token,
 };
+use cid::Cid;
 use fnv::{FnvHashMap, FnvHashSet};
-use libipld::Cid;
 use libp2p::PeerId;
 use std::{collections::VecDeque, mem::take};
 

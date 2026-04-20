@@ -1,6 +1,6 @@
 use crate::compat::other;
-use libipld::cid::{Cid, Version};
-use libipld::multihash::{Code, MultihashDigest};
+use cid::{Cid, Version};
+use multihash_codetable::{Code, MultihashDigest};
 use std::convert::TryFrom;
 use std::io::Result;
 use unsigned_varint::{decode as varint_decode, encode as varint_encode};

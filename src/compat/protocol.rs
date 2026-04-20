@@ -104,7 +104,7 @@ impl From<()> for InboundMessage {
 //     use crate::protocol::{BitswapRequest, RequestType};
 //     use async_std::net::{TcpListener, TcpStream};
 //     use futures::prelude::*;
-//     use libipld::Cid;
+//     use cid::Cid;
 //     use libp2p::core::upgrade;
 
 //     #[async_std::test]

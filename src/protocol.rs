@@ -1,13 +1,11 @@
 use crate::Token;
 use async_trait::async_trait;
+use cid::Cid;
 use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use libipld::cid::Cid;
-use libipld::store::StoreParams;
 use libp2p::request_response::Codec;
 use libp2p::StreamProtocol;
 use std::convert::TryInto;
 use std::io::{self, ErrorKind, Read, Write};
-use std::marker::PhantomData;
 use thiserror::Error;
 use unsigned_varint::{aio, io::ReadError};
 
@@ -19,24 +17,25 @@ pub(crate) const LIBP2P_BITSWAP_PROTOCOL: StreamProtocol =
     StreamProtocol::new("/ipfs-embed/bitswap/1.1.0");
 
 #[derive(Clone)]
-pub struct BitswapCodec<P> {
-    _marker: PhantomData<P>,
+pub struct BitswapCodec {
     buffer: Vec<u8>,
+    max_block_size: usize,
 }
 
-impl<P: StoreParams> Default for BitswapCodec<P> {
-    fn default() -> Self {
-        let capacity = usize::max(P::MAX_BLOCK_SIZE, usize::max(MAX_CID_SIZE, MAX_TOKEN_SIZE)) + 1;
+impl BitswapCodec {
+    /// Creates a new codec with the given maximum block size.
+    pub fn new(max_block_size: usize) -> Self {
+        let capacity = usize::max(max_block_size, usize::max(MAX_CID_SIZE, MAX_TOKEN_SIZE)) + 1;
         debug_assert!(capacity <= u32::MAX as usize);
         Self {
-            _marker: PhantomData,
             buffer: Vec::with_capacity(capacity),
+            max_block_size,
         }
     }
 }
 
 #[async_trait]
-impl<P: StoreParams> Codec for BitswapCodec<P> {
+impl Codec for BitswapCodec {
     type Protocol = StreamProtocol;
     type Request = BitswapRequest;
     type Response = BitswapResponse;
@@ -70,7 +69,7 @@ impl<P: StoreParams> Codec for BitswapCodec<P> {
             ReadError::Io(e) => e,
             err => other(err),
         })?);
-        if msg_len > P::MAX_BLOCK_SIZE + 1 {
+        if msg_len > self.max_block_size + 1 {
             return Err(invalid_data(MessageTooLarge(msg_len)));
         }
         self.buffer.resize(msg_len, 0);
@@ -111,7 +110,7 @@ impl<P: StoreParams> Codec for BitswapCodec<P> {
     {
         self.buffer.clear();
         res.write_to(&mut self.buffer)?;
-        if self.buffer.len() > P::MAX_BLOCK_SIZE + 1 {
+        if self.buffer.len() > self.max_block_size + 1 {
             return Err(invalid_data(MessageTooLarge(self.buffer.len())));
         }
         let mut buf = unsigned_varint::encode::u32_buffer();
@@ -244,7 +243,7 @@ fn invalid_data<E: std::error::Error + Send + Sync + 'static>(e: E) -> io::Error
 }
 
 fn other<E: std::error::Error + Send + Sync + 'static>(e: E) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, e)
+    io::Error::other(e)
 }
 
 #[cfg(any(target_pointer_width = "64", target_pointer_width = "32"))]
@@ -263,8 +262,7 @@ pub struct MessageTooLarge(usize);
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use libipld::multihash::Code;
-    use multihash::MultihashDigest;
+    use multihash_codetable::{Code, MultihashDigest};
 
     pub fn create_cid(bytes: &[u8]) -> Cid {
         let digest = Code::Blake3_256.digest(bytes);
