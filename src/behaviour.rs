@@ -5,6 +5,7 @@
 //!
 //! The `Bitswap` struct implements the `NetworkBehaviour` trait. When used, it
 //! will allow providing and reciving IPFS blocks.
+use crate::block::{Block, BlockNotFound};
 #[cfg(feature = "compat")]
 use crate::compat::{CompatMessage, CompatProtocol, InboundMessage};
 use crate::protocol::{
@@ -12,6 +13,8 @@ use crate::protocol::{
 };
 use crate::query::{QueryEvent, QueryId, QueryManager, Request, Response};
 use crate::{stats::*, Token};
+use anyhow::Result;
+use cid::Cid;
 use fnv::FnvHashMap;
 #[cfg(feature = "compat")]
 use fnv::FnvHashSet;
@@ -21,7 +24,6 @@ use futures::{
     stream::{Stream, StreamExt},
     task::{Context, Poll},
 };
-use libipld::{error::BlockNotFound, store::StoreParams, Block, Cid, Result};
 use libp2p::core::transport::PortUse;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
@@ -65,8 +67,6 @@ pub enum BitswapEvent {
 /// Trait implemented by a block store.
 #[async_trait::async_trait]
 pub trait BitswapStore: Send + Sync + 'static {
-    /// The store params.
-    type Params: StoreParams;
     /// A have query needs to know if the block store contains the block.
     async fn contains(&mut self, cid: &Cid, remote_peer: &PeerId, tokens: &[Token])
         -> Result<bool>;
@@ -78,12 +78,8 @@ pub trait BitswapStore: Send + Sync + 'static {
         tokens: &[Token],
     ) -> Result<Option<Vec<u8>>>;
     /// A block response needs to insert the block into the store.
-    async fn insert(
-        &mut self,
-        block: &Block<Self::Params>,
-        remote_peer: &PeerId,
-        tokens: &[Token],
-    ) -> Result<()>;
+    async fn insert(&mut self, block: &Block, remote_peer: &PeerId, tokens: &[Token])
+        -> Result<()>;
     /// A sync query needs a list of missing blocks to make progress.
     async fn missing_blocks(&mut self, cid: &Cid, tokens: &[Token]) -> Result<Vec<Cid>>;
 }
@@ -95,6 +91,8 @@ pub struct BitswapConfig {
     pub request_timeout: Duration,
     /// The upper bound for the number of concurrent inbound + outbound streams.
     pub max_concurrent_streams: usize,
+    /// Maximum accepted block size in bytes.
+    pub max_block_size: usize,
 }
 
 impl BitswapConfig {
@@ -103,6 +101,7 @@ impl BitswapConfig {
         Self {
             request_timeout: Duration::from_secs(10),
             max_concurrent_streams: 100,
+            max_block_size: 1_048_576,
         }
     }
 }
@@ -127,15 +126,15 @@ enum BitswapChannel {
 }
 
 /// Network behaviour that handles sending and receiving blocks.
-pub struct Bitswap<P: StoreParams> {
+pub struct Bitswap {
     /// Inner behaviour.
-    inner: RequestResponse<BitswapCodec<P>>,
+    inner: RequestResponse<BitswapCodec>,
     /// Query manager.
     query_manager: QueryManager,
     /// Requests.
     requests: FnvHashMap<BitswapId, QueryId>,
     /// Db request channel.
-    db_tx: mpsc::UnboundedSender<DbRequest<P>>,
+    db_tx: mpsc::UnboundedSender<DbRequest>,
     /// Db response channel.
     db_rx: mpsc::UnboundedReceiver<DbResponse>,
     /// Compat peers.
@@ -143,9 +142,9 @@ pub struct Bitswap<P: StoreParams> {
     compat: FnvHashSet<PeerId>,
 }
 
-impl<P: StoreParams> Bitswap<P> {
+impl Bitswap {
     /// Creates a new `Bitswap` behaviour.
-    pub fn new<S: BitswapStore<Params = P>>(
+    pub fn new<S: BitswapStore>(
         config: BitswapConfig,
         store: S,
         executor: Box<dyn FnOnce(BoxFuture<'static, ()>)>,
@@ -154,7 +153,8 @@ impl<P: StoreParams> Bitswap<P> {
             .with_max_concurrent_streams(config.max_concurrent_streams)
             .with_request_timeout(config.request_timeout);
         let protocols = std::iter::once((LIBP2P_BITSWAP_PROTOCOL, ProtocolSupport::Full));
-        let inner = RequestResponse::new(protocols, rr_config);
+        let codec = BitswapCodec::new(config.max_block_size);
+        let inner = RequestResponse::with_codec(codec, protocols, rr_config);
         let (db_tx, db_rx) = start_db_thread(store, executor);
         Self {
             inner,
@@ -236,9 +236,9 @@ impl<P: StoreParams> Bitswap<P> {
     }
 }
 
-enum DbRequest<P: StoreParams> {
+enum DbRequest {
     Bitswap(BitswapChannel, BitswapRequest, PeerId),
-    Insert(QueryId, Block<P>, Vec<Token>, PeerId),
+    Insert(QueryId, Block, Vec<Token>, PeerId),
     MissingBlocks(QueryId, Cid, Vec<Token>),
 }
 
@@ -252,13 +252,13 @@ fn start_db_thread<S: BitswapStore>(
     mut store: S,
     executor: Box<dyn FnOnce(BoxFuture<'static, ()>)>,
 ) -> (
-    mpsc::UnboundedSender<DbRequest<S::Params>>,
+    mpsc::UnboundedSender<DbRequest>,
     mpsc::UnboundedReceiver<DbResponse>,
 ) {
     let (tx, requests) = mpsc::unbounded();
     let (responses, rx) = mpsc::unbounded();
     executor(Box::pin(async move {
-        let mut requests: mpsc::UnboundedReceiver<DbRequest<S::Params>> = requests;
+        let mut requests: mpsc::UnboundedReceiver<DbRequest> = requests;
         while let Some(request) = requests.next().await {
             match request {
                 DbRequest::Bitswap(channel, request, remote_peer) => {
@@ -320,7 +320,7 @@ fn start_db_thread<S: BitswapStore>(
     (tx, rx)
 }
 
-impl<P: StoreParams> Bitswap<P> {
+impl Bitswap {
     /// Processes an incoming bitswap request.
     fn inject_request(&mut self, channel: BitswapChannel, peer: PeerId, request: BitswapRequest) {
         self.db_tx
@@ -434,15 +434,14 @@ impl<P: StoreParams> Bitswap<P> {
     }
 }
 
-impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
+impl NetworkBehaviour for Bitswap {
     #[cfg(not(feature = "compat"))]
-    type ConnectionHandler =
-        <RequestResponse<BitswapCodec<P>> as NetworkBehaviour>::ConnectionHandler;
+    type ConnectionHandler = <RequestResponse<BitswapCodec> as NetworkBehaviour>::ConnectionHandler;
 
     #[cfg(feature = "compat")]
     #[allow(clippy::type_complexity)]
     type ConnectionHandler = ConnectionHandlerSelect<
-        <RequestResponse<BitswapCodec<P>> as NetworkBehaviour>::ConnectionHandler,
+        <RequestResponse<BitswapCodec> as NetworkBehaviour>::ConnectionHandler,
         OneShotHandler<CompatProtocol, CompatMessage, InboundMessage>,
     >;
     type ToSwarm = BitswapEvent;
@@ -842,15 +841,14 @@ impl<P: StoreParams> NetworkBehaviour for Bitswap<P> {
 mod tests {
     use super::*;
     use futures::prelude::*;
-    use libipld::block::Block;
-    use libipld::cbor::DagCborCodec;
-    use libipld::ipld;
-    use libipld::ipld::Ipld;
-    use libipld::multihash::Code;
-    use libipld::store::DefaultParams;
+    use ipld_core::codec::{Codec, Links};
+    use ipld_core::ipld;
+    use ipld_core::ipld::Ipld;
     use libp2p::swarm::SwarmEvent;
     use libp2p::{noise, tcp, yamux, SwarmBuilder};
     use libp2p::{PeerId, Swarm};
+    use multihash_codetable::{Code, MultihashDigest};
+    use serde_ipld_dagcbor::codec::DagCborCodec;
     use std::sync::{Arc, Mutex};
     use tokio::spawn;
     use tokio::time::sleep;
@@ -864,8 +862,12 @@ mod tests {
             .ok();
     }
 
-    fn create_block(ipld: Ipld) -> Block<DefaultParams> {
-        Block::encode(DagCborCodec, Code::Blake3_256, &ipld).unwrap()
+    fn create_block(ipld: Ipld) -> Block {
+        let data = DagCborCodec::encode_to_vec(&ipld).unwrap();
+        let hash = Code::Blake3_256.digest(&data);
+        // 0x71 = dag-cbor multicodec
+        let cid = Cid::new_v1(0x71, hash);
+        Block::new_unchecked(cid, data)
     }
 
     #[derive(Clone, Default)]
@@ -881,7 +883,6 @@ mod tests {
 
     #[async_trait::async_trait]
     impl BitswapStore for Store {
-        type Params = DefaultParams;
         async fn contains(
             &mut self,
             cid: &Cid,
@@ -914,7 +915,7 @@ mod tests {
         }
         async fn insert(
             &mut self,
-            block: &Block<Self::Params>,
+            block: &Block,
             remote_peer: &PeerId,
             tokens: &[Token],
         ) -> Result<()> {
@@ -928,9 +929,11 @@ mod tests {
             let mut stack = vec![*cid];
             let mut missing = vec![];
             while let Some(cid) = stack.pop() {
-                if let Some(StoryEntry(data, _, _)) = self.0.lock().unwrap().get(&cid) {
-                    let block = Block::<Self::Params>::new_unchecked(cid, data.clone());
-                    block.references(&mut stack)?;
+                let entry = self.0.lock().unwrap().get(&cid).cloned();
+                if let Some(StoryEntry(data, _, _)) = entry {
+                    for link in DagCborCodec::links(&data)? {
+                        stack.push(link);
+                    }
                 } else {
                     missing.push(cid);
                 }
@@ -949,7 +952,6 @@ mod tests {
     }
     #[async_trait::async_trait]
     impl BitswapStore for SlowStore {
-        type Params = <Store as BitswapStore>::Params;
         async fn contains(
             &mut self,
             cid: &Cid,
@@ -970,7 +972,7 @@ mod tests {
         }
         async fn insert(
             &mut self,
-            block: &Block<Self::Params>,
+            block: &Block,
             remote_peer: &PeerId,
             tokens: &[Token],
         ) -> Result<()> {
@@ -987,7 +989,7 @@ mod tests {
         peer_id: PeerId,
         addr: Multiaddr,
         store: Store,
-        swarm: Swarm<Bitswap<DefaultParams>>,
+        swarm: Swarm<Bitswap>,
     }
 
     impl Peer {
@@ -1044,7 +1046,7 @@ mod tests {
             self.store.0.lock().unwrap()
         }
 
-        fn swarm(&mut self) -> &mut Swarm<Bitswap<DefaultParams>> {
+        fn swarm(&mut self) -> &mut Swarm<Bitswap> {
             &mut self.swarm
         }
 

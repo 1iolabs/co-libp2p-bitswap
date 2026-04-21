@@ -4,7 +4,7 @@ use std::{
 };
 
 /// Bitswap authentication.
-/// See: https://github.com/ipfs/specs/pull/270
+/// See: <https://github.com/ipfs/specs/pull/270>
 /// Format:
 /// ```ebnf
 /// Token = MultiCodec TokenLength TokenValue

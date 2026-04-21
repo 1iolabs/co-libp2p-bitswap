@@ -2,7 +2,7 @@ use crate::compat::other;
 use crate::compat::prefix::Prefix;
 use crate::protocol::{BitswapRequest, BitswapResponse, RequestType};
 use crate::Token;
-use libipld::Cid;
+use cid::Cid;
 use quick_protobuf::{BytesReader, MessageRead, MessageWrite, Writer};
 use std::convert::TryFrom;
 use std::io;
@@ -158,7 +158,7 @@ fn extract_tokens(message: &bitswap_pb::Message, indices: &[i32]) -> std::io::Re
 fn push_token(message: &mut bitswap_pb::Message, token: &Token) -> i32 {
     let bytes = token.to_vec();
     for (i, t) in message.tokens.iter().enumerate() {
-        if t.as_ref() == &bytes {
+        if t.as_ref() == bytes {
             return i as i32;
         }
     }
