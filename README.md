@@ -38,28 +38,28 @@ pub enum BitswapEvent {
 }
 
 pub trait BitswapStore: Send + Sync + 'static {
-    /// The store params.
-    type Params: StoreParams;
     /// A have query needs to know if the block store contains the block.
-    fn contains(&mut self, cid: &Cid) -> Result<bool>;
+    async fn contains(&mut self, cid: &Cid, remote_peer: &PeerId, tokens: &[Token]) -> Result<bool>;
     /// A block query needs to retrieve the block from the store.
-    fn get(&mut self, cid: &Cid) -> Result<Option<Vec<u8>>>;
+    async fn get(&mut self, cid: &Cid, remote_peer: &PeerId, tokens: &[Token]) -> Result<Option<Vec<u8>>>;
     /// A block response needs to insert the block into the store.
-    fn insert(&mut self, block: &Block<Self::Params>) -> Result<()>;
+    async fn insert(&mut self, block: &Block, remote_peer: &PeerId, tokens: &[Token]) -> Result<()>;
     /// A sync query needs a list of missing blocks to make progress.
-    fn missing_blocks(&mut self, cid: &Cid) -> Result<Vec<Cid>>;
+    async fn missing_blocks(&mut self, cid: &Cid, tokens: &[Token]) -> Result<Vec<Cid>>;
 }
 
 pub struct BitswapConfig {
     /// Timeout of a request.
     pub request_timeout: Duration,
-    /// Time a connection is kept alive.
-    pub connection_keep_alive: Duration,
+    /// The upper bound for the number of concurrent inbound + outbound streams.
+    pub max_concurrent_streams: usize,
+    /// Maximum accepted block size in bytes.
+    pub max_block_size: usize,
 }
 
-impl<P: StoreParams> Bitswap<P> {
+impl Bitswap {
     /// Creates a new `Bitswap` behaviour.
-    pub fn new(config: BitswapConfig) -> Self;
+    pub fn new<S: BitswapStore>(config: BitswapConfig, store: S, executor: Box<dyn FnOnce(BoxFuture<'static, ()>)>) -> Self;
 
     /// Adds an address for a peer.
     pub fn add_address(&mut self, peer_id: &PeerId, addr: Multiaddr);
@@ -68,15 +68,16 @@ impl<P: StoreParams> Bitswap<P> {
     pub fn remove_address(&mut self, peer_id: &PeerId, addr: &Multiaddr);
 
     /// Starts a get query with an initial guess of providers.
-    pub fn get(&mut self, cid: Cid, peers: impl Iterator<Item = PeerId>) -> QueryId;
+    pub fn get(&mut self, cid: Cid, peers: impl IntoIterator<Item = PeerId>, tokens: impl IntoIterator<Item = Token>) -> QueryId;
 
     /// Starts a sync query with an the initial set of missing blocks.
-    pub fn sync(&mut self, cid: Cid, peers: Vec<PeerId>, missing: impl Iterator<Item = Cid>) -> QueryId;
+    pub fn sync(&mut self, cid: Cid, peers: Vec<PeerId>, missing: impl IntoIterator<Item = Cid>, tokens: impl IntoIterator<Item = Token>) -> QueryId;
 
     /// Cancels an in progress query. Returns true if a query was cancelled.
     pub fn cancel(&mut self, id: QueryId) -> bool;
 
     /// Register bitswap stats in a prometheus registry.
+    #[cfg(feature = "metrics")]
     pub fn register_metrics(&self, registry: &Registry) -> Result<()>;
 }
 ```
@@ -96,14 +97,8 @@ providers that had a block is used as the initial set in a reference query.
 
 ## Divergence
 
-This fork contains the following changes from upstream [`libp2p-bitswap`](https://github.com/ipfs-rust/libp2p-bitswap) v0.25.0:
-
-- Updated libp2p through versions 0.51 to 0.56
-- Migrated to quick-protobuf
-- feat: authentication support (pass remote PeerId to get/contains calls)
-- feat: `wasm-bindgen` feature for browser WASM support
-- feat: `metrics` feature with prometheus instrumentation
-- fix: limit token sending to 1MB cumulative size
+This fork diverges from upstream [`libp2p-bitswap`](https://github.com/ipfs-rust/libp2p-bitswap) v0.25.0.
+See the [CHANGELOG](./CHANGELOG.md) for the full per-release delta, including breaking changes and migration notes.
 
 ## License
 
