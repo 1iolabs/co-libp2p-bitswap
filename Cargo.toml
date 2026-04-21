@@ -1,6 +1,6 @@
 [package]
 name = "co-libp2p-bitswap"
-version = "0.26.1"
+version = "0.27.0"
 authors = ["David Craven <david@craven.ch>", "DK <34+dk@users.noreply.1io.com>"]
 edition = "2021"
 resolver = "2"
